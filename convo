@@ -1,0 +1,90 @@
+Yes, and it removes the case statement entirely. Two things need adjusting in how you've drawn it, though.
+
+**1. "Import" isn't something a test does.**
+A `import "DPI-C"` line is compiled and linked whether or not a test uses it, so all three sets of imports (and all three `.so` files) are always present. What an intermediate base test can do is choose **which model class gets created**. So the pattern is one small class per model, each holding its own DPI-C imports, plus a factory override in the model-specific base test.
+
+**2. The chain works, but with single inheritance a test belongs to exactly one model.**
+SystemVerilog has no multiple inheritance, so `test_sweep` can't extend both `adc_base_test` and `picket_base_test`. That matters for the layout you described; see the catch below.
+
+## How it works
+
+```
+adc_base_test                    common setup: env, timeouts, report
+ ├─ trident_base_test            factory override → trident_model
+ │    └─ trident_cal_test        tests that only make sense for Trident
+ ├─ triton_base_test             factory override → triton_model
+ └─ picket_base_test             factory override → picket_model
+      └─ picket_cal_test
+```
+
+The driver proxy never knows which model it has. It asks the factory for the base type and gets whichever override is active:
+
+```systemverilog
+// dpic/sv/dpic_model_base.sv — the contract (concrete, fatals if no override was applied)
+class dpic_model_base extends uvm_object;
+  `uvm_object_utils(dpic_model_base)
+  function new(string name = "dpic_model_base"); super.new(name); endfunction
+  virtual function void init();        `uvm_fatal("DPIC", "no model override applied") endfunction
+  virtual function real next();        `uvm_fatal("DPIC", "no model override applied") return 0.0; endfunction
+  virtual function bit  has_cal_mode(); return 0; endfunction
+endclass
+
+// dpic/sv/picket_dpic_pkg.sv — this model's imports live with its class
+import "DPI-C" function chandle picket_adc_init();
+import "DPI-C" function real    picket_adc_next(input chandle s);
+
+class picket_model extends dpic_model_base;
+  `uvm_object_utils(picket_model)
+  chandle state;
+  function new(string name = "picket_model"); super.new(name); endfunction
+  virtual function void init();         state = picket_adc_init();   endfunction
+  virtual function real next();         return picket_adc_next(state); endfunction
+  virtual function bit  has_cal_mode(); return 1; endfunction     // replaces the cfg flag
+endclass
+
+// tests/src/picket_base_test.sv — the "specific data type base test"
+class picket_base_test extends adc_base_test;
+  `uvm_component_utils(picket_base_test)
+  function new(string name = "picket_base_test", uvm_component parent = null); super.new(name, parent); endfunction
+  virtual function void build_phase(uvm_phase phase);
+    dpic_model_base::type_id::set_type_override(picket_model::get_type());  // before the env is built
+    super.build_phase(phase);
+  endfunction
+endclass
+
+// driver proxy: no case statement anywhere
+model = dpic_model_base::type_id::create("model");   // comes back as a picket_model
+model.init();   ...   sample = model.next();
+```
+
+The per-model numbers (width, rate, capability flags) can also live in each model class as fields or virtual functions, so the second case statement in `dpic_cfg` goes away too.
+
+## The catch: scenario × model
+
+With your chain, `picket_sweep_test` extends `picket_base_test`. To run the same sweep on all three models you need three classes (`trident_sweep_test`, `triton_sweep_test`, `picket_sweep_test`). That brings back the 3 × N problem. You have two ways around it:
+
+| | Chain (model base tests) | Plusarg picks the override by name |
+|---|---|---|
+| How the model is chosen | Which test class you run | `+DPIC_MODEL=picket` |
+| Shared scenarios on all 3 models | Need one class per model per scenario | One class per scenario |
+| Model-only tests | Natural fit | Need a capability check or a skip |
+| Adding a 4th model | New model class + new base test | New model class only |
+
+The plusarg version replaces the case statement with a factory lookup by name:
+
+```systemverilog
+// in adc_base_test.build_phase, before the env is created
+string m;
+if ($value$plusargs("DPIC_MODEL=%s", m)) begin
+  uvm_coreservice_t cs = uvm_coreservice_t::get();
+  cs.get_factory().set_type_override_by_name("dpic_model_base", {m, "_model"});
+end
+```
+
+A typo in the plusarg shows up as a factory "type not found" error when the model is created.
+
+## What I'd do
+
+Use both. Keep the plusarg override in `adc_base_test` for scenarios you want on every model, and add `trident_base_test`, `triton_base_test` and `picket_base_test` only when a model needs its own extra setup or has tests that make sense for it alone. Everything shares the same `dpic_model_base` contract, so none of it needs an if/else.
+
+I can fold this into the structure guide as a new section with the inheritance tree, if you want it in the same diagram.
