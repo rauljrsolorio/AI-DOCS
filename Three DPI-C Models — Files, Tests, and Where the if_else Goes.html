@@ -1,0 +1,589 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1"><style>:root{color-scheme:light}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Three DPI-C Models — Files, Tests, and Where the if/else Goes</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=JetBrains+Mono:wght@400;500;700&display=swap');
+  :root{
+    --bg:#0b0f12; --grid:#141b1f; --panel:#0f1417; --border:#1f2b30;
+    --green:#39d98a; --amber:#e8b04b; --blue:#7fb4e8; --purple:#c792ea; --red:#e86a5c;
+    --text:#c9d4d6; --dim:#7d8c8f; --code:#0a0d0f;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; background-color:var(--bg);
+    background-image:linear-gradient(var(--grid) 1px, transparent 1px), linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+    background-size:32px 32px; color:var(--text);
+    font-family:'JetBrains Mono','Courier New',monospace; line-height:1.55;
+  }
+  h1,h2,h3{font-family:'Space Grotesk',sans-serif; color:#eef3f3;}
+  .wrap{max-width:1160px; margin:0 auto; padding:40px 24px 100px;}
+  header{border-bottom:1px solid var(--border); padding-bottom:24px; margin-bottom:36px;}
+  header .tag{color:var(--green); font-size:.8rem; text-transform:uppercase; letter-spacing:2px;}
+  h1{font-size:1.85rem; margin:.3rem 0;}
+  header p{color:var(--dim); max-width:780px;}
+  section{margin-bottom:56px;}
+  h2{font-size:1.25rem; border-left:3px solid var(--amber); padding-left:12px; margin-bottom:16px;}
+  h3{font-size:1rem; margin:0 0 8px;}
+  p.note{font-size:.8rem; color:var(--dim);}
+  code{color:#dce7e7;}
+
+  .key{background:linear-gradient(135deg, rgba(57,217,138,.08), rgba(232,176,75,.05));
+    border:1px solid var(--green); border-radius:6px; padding:18px 22px; margin:18px 0;}
+  .key .label{color:var(--green); font-weight:700; font-size:.75rem; text-transform:uppercase; letter-spacing:1.5px; margin-bottom:8px;}
+
+  .rules{display:grid; gap:12px; margin:14px 0;}
+  .rule{background:var(--panel); border:1px solid var(--border); border-radius:8px; padding:14px 16px 14px 58px; position:relative; font-size:.84rem;}
+  .rule::before{content:attr(data-n); position:absolute; left:14px; top:14px; width:30px; height:30px; border-radius:50%;
+    background:var(--amber); color:var(--bg); font-weight:700; display:flex; align-items:center; justify-content:center;}
+  .rule b{color:var(--amber);}
+
+  table{width:100%; border-collapse:collapse; margin:14px 0; font-size:.8rem;}
+  th,td{border:1px solid var(--border); padding:8px 12px; text-align:left; vertical-align:top;}
+  th{color:var(--amber); background:rgba(232,176,75,.06);}
+  td.g{color:var(--green);} td.a{color:var(--amber);} td.r{color:var(--red);} td.d{color:var(--dim);}
+
+  /* ---------- layered block diagram ---------- */
+  .diagram{background:var(--panel); border:1px solid var(--border); border-radius:8px; padding:22px;}
+  .region{border:2px dashed var(--border); border-radius:8px; padding:14px; margin-bottom:12px;}
+  .region.hvl{border-color:rgba(57,217,138,.45);}
+  .region.hdl{border-color:rgba(232,176,75,.5);}
+  .region-title{font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:.92rem; margin-bottom:2px;}
+  .hvl .region-title{color:var(--green);} .hdl .region-title{color:var(--amber);}
+  .region-sub{font-size:.68rem; color:var(--dim); margin-bottom:12px;}
+
+  .block{border:2px solid var(--green); border-radius:6px; background:#0d1215; padding:10px 12px; position:relative; margin-bottom:12px;}
+  .block:last-child{margin-bottom:0;}
+  .bl{font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:.88rem; color:var(--green); margin-bottom:5px; display:flex; align-items:center; gap:8px; flex-wrap:wrap;}
+  .pill{font-family:'JetBrains Mono',monospace; font-size:.58rem; color:var(--bg); background:var(--green); padding:1px 6px; border-radius:3px; font-weight:700;}
+  .block ul{margin:0; padding-left:16px; font-size:.72rem;}
+  .block li{margin-bottom:2px;}
+  .amber{border-color:var(--amber);} .amber .bl{color:var(--amber);} .amber .pill{background:var(--amber);}
+  .blue{border-color:var(--blue);} .blue .bl{color:var(--blue);} .blue .pill{background:var(--blue);}
+  .purple{border-color:var(--purple);} .purple .bl{color:var(--purple);} .purple .pill{background:var(--purple);}
+  .hot{box-shadow:0 0 0 2px rgba(232,176,75,.35);}
+  .num{position:absolute; top:-11px; right:-11px; width:24px; height:24px; border-radius:50%;
+    background:var(--amber); color:var(--bg); font-weight:700; font-size:.76rem;
+    display:flex; align-items:center; justify-content:center; border:2px solid var(--bg);}
+  .grid2{display:grid; grid-template-columns:1fr 1fr; gap:12px;}
+  .grid3{display:grid; grid-template-columns:repeat(3,1fr); gap:12px;}
+  @media (max-width:760px){ .grid2,.grid3{grid-template-columns:1fr;} }
+  .conn{text-align:center; color:var(--dim); font-size:.68rem; text-transform:uppercase; letter-spacing:1px; margin:-4px 0 8px;}
+  .conn b{color:var(--amber);}
+  .libs .block{margin-bottom:0;}
+
+  .legend{display:flex; gap:18px; flex-wrap:wrap; margin-top:14px; font-size:.74rem; color:var(--dim);}
+  .legend span{display:inline-flex; align-items:center; gap:6px;}
+  .sw{width:12px; height:12px; border-radius:2px; display:inline-block;}
+
+  /* ---------- trees ---------- */
+  .twocol{display:grid; grid-template-columns:1fr 1fr; gap:18px;}
+  @media (max-width:860px){ .twocol{grid-template-columns:1fr;} }
+  .panel{background:var(--panel); border:1px solid var(--border); border-radius:8px; padding:18px;}
+  .tree .node{position:relative; margin:10px 0;}
+  .tree .children{margin-left:20px; padding-left:18px; border-left:2px solid var(--border);}
+  .tree .children > .node::before{content:""; position:absolute; left:-18px; top:20px; width:18px; border-top:2px solid var(--border);}
+  .nbox{border:2px solid var(--green); border-radius:6px; background:#0d1215; padding:8px 12px;}
+  .nbox .nm{font-weight:700; color:var(--green); font-size:.84rem;}
+  .nbox .ds{font-size:.7rem; color:var(--text); margin-top:3px;}
+  .nbox.am{border-color:var(--amber);} .nbox.am .nm{color:var(--amber);}
+  .nbox.bu{border-color:var(--blue);} .nbox.bu .nm{color:var(--blue);}
+  .nbox.gr{border-color:var(--border);} .nbox.gr .nm{color:var(--dim);}
+  .tagx{display:inline-block; font-size:.58rem; padding:1px 6px; border-radius:3px; margin-left:6px; font-weight:700; vertical-align:middle;}
+  .tagx.c{background:var(--green); color:var(--bg);}
+  .tagx.h{background:var(--amber); color:var(--bg);}
+  .tagx.o{background:var(--border); color:var(--text);}
+
+  /* ---------- flow strip ---------- */
+  .flow{display:flex; flex-wrap:wrap; gap:6px; align-items:stretch;}
+  .flow .n{border:1px solid var(--green); border-radius:5px; padding:7px 10px; background:#0d1215; font-size:.7rem; min-width:118px; flex:1;}
+  .flow .n b{display:block; color:var(--green); font-size:.74rem; margin-bottom:2px;}
+  .flow .n.a{border-color:var(--amber);} .flow .n.a b{color:var(--amber);}
+  .flow .n.b{border-color:var(--blue);} .flow .n.b b{color:var(--blue);}
+  .flow .ar{color:var(--dim); align-self:center; font-size:1rem;}
+
+  pre{background:var(--code); border:1px solid var(--border); border-radius:6px; padding:14px 16px; overflow-x:auto; font-size:.74rem; margin:0 0 14px;}
+  .kw{color:var(--amber);} .str{color:var(--green);} .cmt{color:var(--dim); font-style:italic;} .ty{color:var(--blue);}
+  .file-title{font-size:.72rem; color:var(--amber); margin:0 0 4px; letter-spacing:.5px;}
+  .tree-pre .dir{color:var(--blue);} .tree-pre .you{color:var(--green);} .tree-pre .gen{color:var(--dim);}
+
+  .footnote{color:var(--dim); font-size:.82rem; border-top:1px solid var(--border); margin-top:56px; padding-top:16px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="tag">UVM / UVMF // Three DPI-C Models</div>
+  <h1>Three DPI-C Models, One Testbench</h1>
+  <p>Where the files go, how the tests and sequences are layered, and the one place the "which model?" if/else is allowed to live. All file and class names are examples — rename to match your project.</p>
+</header>
+
+<!-- =============================== 1. THE ANSWER =============================== -->
+<section>
+  <h2>1. The Confusion, Resolved</h2>
+  <div class="key">
+    <div class="label">Short answer</div>
+    A test never contains "if model A … else if model B." The model is a <b>config value</b> chosen once at the top (<code>base_test</code>), and the only code that cares what the value is lives in a small <code>dpic/sv/</code> package. Common setup goes in the base classes. What differs per model is <b>data</b> (a spec sheet), not <b>code</b> (a copy of the test).
+  </div>
+
+  <div class="rules">
+    <div class="rule" data-n="1"><b>Model names appear in one folder.</b> The switch on "trident / triton / picket" lives in <code>dpic/sv/</code> (two tiny case statements: which C function to call, and which numbers apply). Tests, sequences, scoreboard, and env never switch on a model name.</div>
+    <div class="rule" data-n="2"><b>Two independent axes — don't multiply them.</b> <i>Which model</i> (3 values) is a config knob. <i>What scenario</i> (smoke, sweep, calibration…) is the test + sequence. You maintain 3 + N things, not 3 × N classes.</div>
+    <div class="rule" data-n="3"><b>If a sequence has to branch, branch on a capability, not a name.</b> <code>if (cfg.has_cal_mode)</code> survives you adding a fourth model; <code>if (model == PICKET)</code> doesn't.</div>
+  </div>
+
+  <h3 style="color:var(--amber);margin-top:22px;">Same idea, on the test floor</h3>
+  <table>
+    <tr><th>Test station</th><th>Your testbench</th></tr>
+    <tr><td>Which signal-source card is installed today</td><td><code>+DPIC_MODEL=…</code> (or the one-line <code>default_model()</code> in a thin test)</td></tr>
+    <tr><td>The card itself</td><td>The DPI-C model (<code>lib&lt;model&gt;_adc.so</code>)</td></tr>
+    <tr><td>The card's spec sheet (range, resolution, optional features)</td><td><code>dpic_cfg</code> — width, rate, capability flags</td></tr>
+    <tr><td>Station power-up: load config, connect, arm</td><td><code>adc_base_test</code> + <code>adc_base_seq</code> (common setup)</td></tr>
+    <tr><td>A test program</td><td>A scenario test + its sequence</td></tr>
+    <tr><td>A test program that checks "is this card model X?"</td><td>What to avoid — check the spec sheet (capability flag) instead</td></tr>
+  </table>
+</section>
+
+<!-- =============================== 2. LAYER DIAGRAM =============================== -->
+<section>
+  <h2>2. Who Calls Whom</h2>
+  <div class="diagram">
+
+    <div class="region hvl">
+      <div class="region-title">HVL — class world (UVM)</div>
+      <div class="region-sub">everything here can call C; nothing here has ports</div>
+
+      <div class="block amber">
+        <span class="num">1</span>
+        <div class="bl"><span class="pill">TEST</span> adc_base_test &nbsp;&larr; scenario tests and thin per-model tests extend this</div>
+        <ul>
+          <li><b>common:</b> create env, create <code>dpic_cfg</code>, read <code>+DPIC_MODEL</code>, apply model defaults, publish cfg via <code>config_db</code>, timeouts</li>
+          <li><b>hook:</b> <code>default_model()</code> — the one thing a thin per-model test overrides</li>
+          <li>the test starts the scenario sequence and owns the objection</li>
+        </ul>
+      </div>
+      <div class="conn">cfg published through <b>config_db</b> (set once) &darr;</div>
+
+      <div class="grid2">
+        <div class="block purple">
+          <span class="num">2</span>
+          <div class="bl"><span class="pill">SEQ</span> adc_base_seq &rarr; scenario sequences</div>
+          <ul>
+            <li><b>common:</b> fetch <code>dpic_cfg</code> in <code>pre_body</code>, <code>send_burst(n)</code> helper</li>
+            <li>items carry <b>control only</b> — how many samples, when — never the data</li>
+            <li>may branch on <code>cfg.has_cal_mode</code>-style flags, never on model name</li>
+          </ul>
+        </div>
+        <div class="block blue">
+          <span class="num">3</span>
+          <div class="bl"><span class="pill">AGENT</span> sequencer &rarr; driver (proxy)</div>
+          <ul>
+            <li>gets <code>dpic_cfg</code> from config_db</li>
+            <li>creates the wrapper and calls <code>init(cfg.model)</code> <b>once</b>, at start of simulation</li>
+            <li>per item: <code>dpic.next()</code> N times, pack a burst, hand it to the BFM</li>
+          </ul>
+        </div>
+      </div>
+      <div class="conn">driver proxy calls &darr;</div>
+
+      <div class="block amber hot">
+        <span class="num">4</span>
+        <div class="bl"><span class="pill">dpic/sv</span> dpic_model_wrapper &nbsp;(in <code>dpic_pkg.sv</code>)</div>
+        <ul>
+          <li><b>the only DPI-C import list in the testbench</b> — all three models' <code>init / next / term</code></li>
+          <li><b>the if/else lives here:</b> <code>case (model)</code> picks which imported function runs</li>
+          <li>holds the <code>chandle</code> state for the <b>selected</b> model only</li>
+          <li>sibling <code>dpic_cfg.sv</code>: per-model width, rate, capability flags (second small case)</li>
+        </ul>
+      </div>
+      <div class="conn">links into the sim as three shared libraries &darr; (only the selected one is ever called)</div>
+
+      <div class="grid3 libs">
+        <div class="block amber"><div class="bl"><span class="pill">.so</span> libtrident_adc</div><ul><li><code>trident_adc_init/next/term</code></li></ul></div>
+        <div class="block amber"><div class="bl"><span class="pill">.so</span> libtriton_adc</div><ul><li><code>triton_adc_init/next/term</code></li></ul></div>
+        <div class="block amber"><div class="bl"><span class="pill">.so</span> libpicket_adc</div><ul><li><code>picket_adc_init/next/term</code></li></ul></div>
+      </div>
+    </div>
+
+    <div class="conn" style="margin:2px 0 10px;">sample burst crosses the HVL / HDL boundary &darr;</div>
+
+    <div class="region hdl">
+      <div class="region-title">HDL — module world (hdl_top)</div>
+      <div class="region-sub">pin-level only; no C code in here, so it stays emulator-friendly</div>
+      <div class="grid2">
+        <div class="block amber">
+          <span class="num">5</span>
+          <div class="bl"><span class="pill">BFM</span> adc driver BFM</div>
+          <ul>
+            <li>takes the burst, drives <code>adc_data</code> / <code>valid</code> clock by clock</li>
+            <li>no idea which model produced the samples</li>
+          </ul>
+        </div>
+        <div class="block amber">
+          <div class="bl"><span class="pill">DUT</span> your FPGA RTL</div>
+          <ul>
+            <li>wired to the interface once in <code>hdl_top</code></li>
+            <li>identical for all three models</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <div class="legend">
+      <span><span class="sw" style="background:var(--amber)"></span> test level / model-specific / HDL</span>
+      <span><span class="sw" style="background:var(--purple)"></span> sequences</span>
+      <span><span class="sw" style="background:var(--blue)"></span> agent</span>
+      <span><span class="sw" style="background:var(--green)"></span> shared components</span>
+      <span><span class="sw" style="background:transparent;border:2px solid var(--amber);box-shadow:0 0 0 2px rgba(232,176,75,.35)"></span> the one switch point</span>
+    </div>
+  </div>
+  <p class="note">Why the DPI-C call sits in the driver proxy and not in the BFM: C code can't run inside an emulator's module side. Keeping it in the class world means the same testbench runs in simulation now and on an emulator later. If you only ever simulate, calling from the BFM works too — but you'd be giving that option up for no gain.</p>
+</section>
+
+<!-- =============================== 3. SELECTION FLOW =============================== -->
+<section>
+  <h2>3. How One Run Picks Its Model</h2>
+  <div class="flow">
+    <div class="n a"><b>command line</b><code>+UVM_TESTNAME=test_sweep +DPIC_MODEL=picket</code></div><div class="ar">&rarr;</div>
+    <div class="n a"><b>adc_base_test</b>default_model(), then plusarg overrides it</div><div class="ar">&rarr;</div>
+    <div class="n"><b>dpic_cfg</b>model = PICKET, width, rate, flags</div><div class="ar">&rarr;</div>
+    <div class="n"><b>config_db</b>set once under <code>env.*</code></div><div class="ar">&rarr;</div>
+    <div class="n b"><b>driver proxy</b>get cfg, <code>dpic.init(PICKET)</code></div><div class="ar">&rarr;</div>
+    <div class="n a"><b>wrapper case</b>calls only <code>picket_adc_*</code></div><div class="ar">&rarr;</div>
+    <div class="n a"><b>libpicket_adc.so</b>returns samples</div>
+  </div>
+  <p class="note">Same run without the plusarg: <code>+UVM_TESTNAME=test_picket</code> — the thin test's <code>default_model()</code> returns PICKET and everything downstream is identical. Both ways end in the same <code>dpic_cfg</code>.</p>
+</section>
+
+<!-- =============================== 4. FILE TREE =============================== -->
+<section>
+  <h2>4. Example File Structure</h2>
+  <pre class="tree-pre"><code><span class="dir">adc_uvmf_project/</span>
+├── <span class="dir">dpic/</span>                                  <span class="cmt">← YOUR code, kept outside generated UVMF folders</span>
+│   ├── <span class="dir">matlab/</span>
+│   │   ├── <span class="you">trident_adc.m</span>
+│   │   ├── <span class="you">triton_adc.m</span>
+│   │   ├── <span class="you">picket_adc.m</span>
+│   │   └── <span class="you">build_dpi_model.m</span>              <span class="cmt">← one script, run once per model: build_dpi_model('picket')</span>
+│   ├── <span class="dir">lib/</span>                               <span class="cmt">← build output (same function shape, unique prefix per model)</span>
+│   │   ├── <span class="gen">libtrident_adc.so</span>
+│   │   ├── <span class="gen">libtriton_adc.so</span>
+│   │   └── <span class="gen">libpicket_adc.so</span>
+│   └── <span class="dir">sv/</span>
+│       ├── <span class="you">dpic_pkg.sv</span>                    <span class="cmt">← DPI imports + dpic_model_e enum + dpic_model_wrapper  (case #1)</span>
+│       └── <span class="you">dpic_cfg.sv</span>                    <span class="cmt">← per-model width / rate / capability flags           (case #2)</span>
+│
+├── <span class="dir">verification_ip/</span>
+│   ├── <span class="dir">interface_packages/adc_pkg/src/</span>
+│   │   ├── <span class="gen">adc_driver_bfm.sv</span>              <span class="cmt">← HDL side: pin-level drive task (no C here)</span>
+│   │   ├── <span class="gen">adc_monitor_bfm.sv</span>
+│   │   ├── <span class="you">adc_driver.sv</span>                  <span class="cmt">← proxy: small edit — create wrapper, call dpic.next(), pass burst to BFM</span>
+│   │   └── <span class="gen">adc_txn.sv</span>                     <span class="cmt">← item: num_samples etc. — control only, no sample data</span>
+│   └── <span class="dir">environment_packages/adc_env_pkg/</span>  <span class="cmt">← env, scoreboard (model-blind)</span>
+│
+└── <span class="dir">project_benches/adc_bench/</span>
+    ├── <span class="dir">tb/testbench/</span>
+    │   ├── <span class="gen">hdl_top.sv</span>                     <span class="cmt">← interface, clock/reset, DUT port map</span>
+    │   └── <span class="gen">hvl_top.sv</span>                     <span class="cmt">← run_test(), config_db for BFM handles</span>
+    ├── <span class="dir">tb/sequences/src/</span>
+    │   ├── <span class="you">adc_base_seq.sv</span>                <span class="cmt">← common: fetch cfg, send_burst()</span>
+    │   ├── <span class="you">adc_smoke_seq.sv</span>
+    │   ├── <span class="you">adc_sweep_seq.sv</span>
+    │   └── <span class="you">adc_cal_seq.sv</span>                 <span class="cmt">← branches on cfg.has_cal_mode, not on model name</span>
+    ├── <span class="dir">tb/tests/src/</span>
+    │   ├── <span class="you">adc_base_test.sv</span>               <span class="cmt">← common setup + default_model() hook</span>
+    │   ├── <span class="you">test_trident.sv</span>  <span class="you">test_triton.sv</span>  <span class="you">test_picket.sv</span>   <span class="cmt">← optional thin tests, ~3 lines each</span>
+    │   └── <span class="you">test_smoke.sv</span>  <span class="you">test_sweep.sv</span>  <span class="you">test_cal.sv</span>               <span class="cmt">← scenarios: start a sequence, know nothing about models</span>
+    └── <span class="dir">sim/</span>
+        ├── <span class="you">Makefile</span>                       <span class="cmt">← compile once, link all 3 libs, regression loop</span>
+        └── <span class="dir">logs/</span></code></pre>
+  <p class="note"><span style="color:var(--green)">green</span> = files you write and own &nbsp;·&nbsp; <span style="color:var(--dim)">grey</span> = generated or build output &nbsp;·&nbsp; UVMF folder and file names vary by version and by how your YAML is set up, so treat the <code>verification_ip/</code> and <code>project_benches/</code> branches as a map, not gospel. Check which files your UVMF version marks as safe to hand-edit before touching the driver proxy — regeneration can overwrite edits. If you build with <code>uvmfbuild</code>, point its output at <code>dpic/lib/</code> and <code>dpic/sv/</code> and the rest of this structure doesn't change.</p>
+</section>
+
+<!-- =============================== 5. CLASS HIERARCHY =============================== -->
+<section>
+  <h2>5. Test and Sequence Layering — What Goes Where</h2>
+  <div class="twocol">
+
+    <div class="panel tree">
+      <h3 style="color:var(--amber);">Tests (what to run)</h3>
+      <div class="node">
+        <div class="nbox gr"><div class="nm">uvm_test</div></div>
+        <div class="children">
+          <div class="node">
+            <div class="nbox am">
+              <div class="nm">adc_base_test <span class="tagx c">COMMON</span></div>
+              <div class="ds">• create env + <code>dpic_cfg</code><br>• parse <code>+DPIC_MODEL</code><br>• publish cfg, set timeouts, report<br>• <span class="tagx h">HOOK</span> <code>default_model()</code></div>
+            </div>
+            <div class="children">
+              <div class="node">
+                <div class="nbox">
+                  <div class="nm">test_trident / test_triton / test_picket <span class="tagx o">OPTIONAL</span></div>
+                  <div class="ds">• override <code>default_model()</code> only — nothing else</div>
+                </div>
+              </div>
+              <div class="node">
+                <div class="nbox">
+                  <div class="nm">test_smoke / test_sweep / test_cal <span class="tagx c">SCENARIOS</span></div>
+                  <div class="ds">• create a sequence, <code>start()</code> it, own the objection<br>• zero knowledge of which model is active</div>
+                </div>
+              </div>
+              <div class="node">
+                <div class="nbox gr">
+                  <div class="nm">one-off combos</div>
+                  <div class="ds">• need a Picket-only sweep? extend <code>test_sweep</code> and override <code>default_model()</code></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel tree">
+      <h3 style="color:var(--amber);">Sequences (how to stimulate)</h3>
+      <div class="node">
+        <div class="nbox gr"><div class="nm">uvm_sequence #(adc_txn)</div></div>
+        <div class="children">
+          <div class="node">
+            <div class="nbox bu">
+              <div class="nm">adc_base_seq <span class="tagx c">COMMON</span></div>
+              <div class="ds">• <code>pre_body</code>: fetch <code>dpic_cfg</code><br>• <code>send_burst(n)</code> helper<br>• control-only items (counts, timing)</div>
+            </div>
+            <div class="children">
+              <div class="node">
+                <div class="nbox">
+                  <div class="nm">adc_smoke_seq</div>
+                  <div class="ds">• runs on any model as-is</div>
+                </div>
+              </div>
+              <div class="node">
+                <div class="nbox">
+                  <div class="nm">adc_sweep_seq</div>
+                  <div class="ds">• scales ranges using <code>cfg.width</code></div>
+                </div>
+              </div>
+              <div class="node">
+                <div class="nbox am">
+                  <div class="nm">adc_cal_seq <span class="tagx h">CAPABILITY CHECK</span></div>
+                  <div class="ds">• <code>if (!cfg.has_cal_mode)</code> log and skip<br>• this is the legitimate "if" — keyed on a feature flag</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <h3 style="color:var(--amber);margin-top:26px;">What a regression looks like</h3>
+  <table>
+    <tr><th>scenario \ model</th><th>trident</th><th>triton</th><th>picket</th></tr>
+    <tr><td><code>test_smoke</code></td><td class="g">runs</td><td class="g">runs</td><td class="g">runs</td></tr>
+    <tr><td><code>test_sweep</code></td><td class="g">runs</td><td class="g">runs</td><td class="g">runs</td></tr>
+    <tr><td><code>test_cal</code></td><td class="d">skips (no cal mode)</td><td class="d">skips (no cal mode)</td><td class="g">runs</td></tr>
+  </table>
+  <p class="note">Example flags — set them from your real ADC specs. Nine runs from three scenario classes plus the optional thin tests. The "wrong" way — one test class per cell — would be nine classes, and a fourth model would add three more.</p>
+</section>
+
+<!-- =============================== 6. CODE =============================== -->
+<section>
+  <h2>6. The Skeleton Code</h2>
+  <p class="note">Shape only — enough to show where each piece sits. Imports, includes, and your real transaction fields are left out. The numbers in <code>dpic_cfg</code> are placeholders.</p>
+
+  <div class="file-title">dpic/sv/dpic_pkg.sv &nbsp;— the DPI imports and the first switch</div>
+<pre><code><span class="kw">package</span> dpic_pkg;
+  <span class="kw">import</span> uvm_pkg::*;  `<span class="kw">include</span> <span class="str">"uvm_macros.svh"</span>
+
+  <span class="kw">typedef enum</span> {TRIDENT, TRITON, PICKET} <span class="ty">dpic_model_e</span>;
+
+  <span class="cmt">// one init / next / term trio per model — same shape, unique prefix</span>
+  <span class="kw">import</span> <span class="str">"DPI-C"</span> <span class="kw">function chandle</span> trident_adc_init();
+  <span class="kw">import</span> <span class="str">"DPI-C"</span> <span class="kw">function real</span>    trident_adc_next(<span class="kw">input chandle</span> s);
+  <span class="kw">import</span> <span class="str">"DPI-C"</span> <span class="kw">function void</span>    trident_adc_term(<span class="kw">input chandle</span> s);
+  <span class="cmt">// ... triton_adc_*, picket_adc_* identical in shape ...</span>
+
+  <span class="kw">class</span> <span class="ty">dpic_model_wrapper</span> <span class="kw">extends</span> <span class="ty">uvm_object</span>;
+    `uvm_object_utils(dpic_model_wrapper)
+    <span class="ty">dpic_model_e</span> model;
+    <span class="kw">chandle</span>      state;
+    <span class="kw">function</span> <span class="kw">new</span>(<span class="kw">string</span> name = <span class="str">"dpic_model_wrapper"</span>); <span class="kw">super</span>.new(name); <span class="kw">endfunction</span>
+
+    <span class="kw">function void</span> init(<span class="ty">dpic_model_e</span> m);
+      model = m;
+      <span class="kw">case</span> (model)                         <span class="cmt">// ← THE if/else</span>
+        TRIDENT: state = trident_adc_init();
+        TRITON : state = triton_adc_init();
+        PICKET : state = picket_adc_init();
+      <span class="kw">endcase</span>
+    <span class="kw">endfunction</span>
+
+    <span class="kw">function real</span> next();
+      <span class="kw">case</span> (model)
+        TRIDENT: <span class="kw">return</span> trident_adc_next(state);
+        TRITON : <span class="kw">return</span> triton_adc_next(state);
+        PICKET : <span class="kw">return</span> picket_adc_next(state);
+        <span class="kw">default</span> : <span class="kw">begin</span> `uvm_fatal(<span class="str">"DPIC"</span>, <span class="str">"model not initialised"</span>) <span class="kw">return</span> 0.0; <span class="kw">end</span>
+      <span class="kw">endcase</span>
+    <span class="kw">endfunction</span>
+  <span class="kw">endclass</span>
+<span class="kw">endpackage</span></code></pre>
+
+  <div class="file-title">dpic/sv/dpic_cfg.sv &nbsp;— the "spec sheet" (second switch; data, not behaviour)</div>
+<pre><code><span class="kw">class</span> <span class="ty">dpic_cfg</span> <span class="kw">extends</span> <span class="ty">uvm_object</span>;
+  `uvm_object_utils(dpic_cfg)
+  <span class="ty">dpic_model_e</span> model;
+  <span class="kw">int unsigned</span> width;          <span class="cmt">// placeholder values — use your real ADC specs</span>
+  <span class="kw">bit</span>          has_cal_mode;   <span class="cmt">// capability flag — sequences check this, not the model name</span>
+
+  <span class="kw">function</span> <span class="kw">new</span>(<span class="kw">string</span> name = <span class="str">"dpic_cfg"</span>); <span class="kw">super</span>.new(name); <span class="kw">endfunction</span>
+
+  <span class="kw">function void</span> set_model_by_name(<span class="kw">string</span> s);
+    <span class="kw">case</span> (s.tolower())
+      <span class="str">"trident"</span>: model = TRIDENT;
+      <span class="str">"triton"</span> : model = TRITON;
+      <span class="str">"picket"</span> : model = PICKET;
+      <span class="kw">default</span>  : `uvm_fatal(<span class="str">"DPIC_CFG"</span>, {<span class="str">"unknown DPIC_MODEL: "</span>, s})
+    <span class="kw">endcase</span>
+  <span class="kw">endfunction</span>
+
+  <span class="kw">function void</span> apply_model_defaults();
+    <span class="kw">case</span> (model)
+      TRIDENT: <span class="kw">begin</span> width = 14; has_cal_mode = 0; <span class="kw">end</span>
+      TRITON : <span class="kw">begin</span> width = 12; has_cal_mode = 0; <span class="kw">end</span>
+      PICKET : <span class="kw">begin</span> width = 16; has_cal_mode = 1; <span class="kw">end</span>
+    <span class="kw">endcase</span>
+  <span class="kw">endfunction</span>
+<span class="kw">endclass</span></code></pre>
+
+  <div class="file-title">tb/tests/src/adc_base_test.sv, test_picket.sv, test_cal.sv &nbsp;— common setup, thin test, scenario test</div>
+<pre><code><span class="kw">class</span> <span class="ty">adc_base_test</span> <span class="kw">extends</span> <span class="ty">uvm_test</span>;
+  `uvm_component_utils(adc_base_test)
+  <span class="ty">adc_env</span>  env;
+  <span class="ty">dpic_cfg</span> cfg;
+  <span class="kw">function</span> <span class="kw">new</span>(<span class="kw">string</span> name, <span class="ty">uvm_component</span> parent); <span class="kw">super</span>.new(name, parent); <span class="kw">endfunction</span>
+
+  <span class="kw">virtual function</span> <span class="ty">dpic_model_e</span> default_model();   <span class="cmt">// HOOK</span>
+    <span class="kw">return</span> TRIDENT;
+  <span class="kw">endfunction</span>
+
+  <span class="kw">virtual function void</span> build_phase(<span class="ty">uvm_phase</span> phase);
+    <span class="kw">string</span> m;
+    <span class="kw">super</span>.build_phase(phase);
+    cfg       = dpic_cfg::type_id::create(<span class="str">"cfg"</span>);
+    cfg.model = default_model();
+    <span class="kw">if</span> ($value$plusargs(<span class="str">"DPIC_MODEL=%s"</span>, m)) cfg.set_model_by_name(m);   <span class="cmt">// plusarg wins</span>
+    cfg.apply_model_defaults();
+    uvm_config_db #(<span class="ty">dpic_cfg</span>)::set(<span class="kw">this</span>, <span class="str">"env.*"</span>, <span class="str">"dpic_cfg"</span>, cfg);
+    env = adc_env::type_id::create(<span class="str">"env"</span>, <span class="kw">this</span>);
+  <span class="kw">endfunction</span>
+<span class="kw">endclass</span>
+
+<span class="cmt">// ---- thin per-model test: three lines of substance ----</span>
+<span class="kw">class</span> <span class="ty">test_picket</span> <span class="kw">extends</span> <span class="ty">adc_base_test</span>;
+  `uvm_component_utils(test_picket)
+  <span class="kw">function</span> <span class="kw">new</span>(<span class="kw">string</span> name = <span class="str">"test_picket"</span>, <span class="ty">uvm_component</span> parent = <span class="kw">null</span>); <span class="kw">super</span>.new(name, parent); <span class="kw">endfunction</span>
+  <span class="kw">virtual function</span> <span class="ty">dpic_model_e</span> default_model(); <span class="kw">return</span> PICKET; <span class="kw">endfunction</span>
+<span class="kw">endclass</span>
+
+<span class="cmt">// ---- scenario test: knows nothing about models ----</span>
+<span class="kw">class</span> <span class="ty">test_cal</span> <span class="kw">extends</span> <span class="ty">adc_base_test</span>;
+  `uvm_component_utils(test_cal)
+  <span class="kw">function</span> <span class="kw">new</span>(<span class="kw">string</span> name = <span class="str">"test_cal"</span>, <span class="ty">uvm_component</span> parent = <span class="kw">null</span>); <span class="kw">super</span>.new(name, parent); <span class="kw">endfunction</span>
+  <span class="kw">virtual task</span> run_phase(<span class="ty">uvm_phase</span> phase);
+    <span class="ty">adc_cal_seq</span> seq = adc_cal_seq::type_id::create(<span class="str">"seq"</span>);
+    phase.raise_objection(<span class="kw">this</span>);
+    seq.start(env.agent.sequencer);          <span class="cmt">// use your env's real path</span>
+    phase.drop_objection(<span class="kw">this</span>);
+  <span class="kw">endtask</span>
+<span class="kw">endclass</span></code></pre>
+
+  <div class="file-title">tb/sequences/src/adc_base_seq.sv and adc_cal_seq.sv &nbsp;— common helpers, capability check</div>
+<pre><code><span class="kw">class</span> <span class="ty">adc_base_seq</span> <span class="kw">extends</span> <span class="ty">uvm_sequence</span> #(<span class="ty">adc_txn</span>);
+  `uvm_object_utils(adc_base_seq)
+  <span class="ty">dpic_cfg</span> cfg;
+  <span class="kw">function</span> <span class="kw">new</span>(<span class="kw">string</span> name = <span class="str">"adc_base_seq"</span>); <span class="kw">super</span>.new(name); <span class="kw">endfunction</span>
+
+  <span class="kw">virtual task</span> pre_body();
+    <span class="kw">if</span> (!uvm_config_db #(<span class="ty">dpic_cfg</span>)::get(m_sequencer, <span class="str">""</span>, <span class="str">"dpic_cfg"</span>, cfg))
+      `uvm_fatal(<span class="str">"SEQ"</span>, <span class="str">"dpic_cfg not found"</span>)
+  <span class="kw">endtask</span>
+
+  <span class="kw">task</span> send_burst(<span class="kw">int unsigned</span> n);                  <span class="cmt">// shared helper</span>
+    <span class="ty">adc_txn</span> t = adc_txn::type_id::create(<span class="str">"t"</span>);
+    start_item(t);
+    t.num_samples = n;                           <span class="cmt">// control only — driver fetches the data</span>
+    finish_item(t);
+  <span class="kw">endtask</span>
+<span class="kw">endclass</span>
+
+<span class="kw">class</span> <span class="ty">adc_cal_seq</span> <span class="kw">extends</span> <span class="ty">adc_base_seq</span>;
+  `uvm_object_utils(adc_cal_seq)
+  <span class="kw">function</span> <span class="kw">new</span>(<span class="kw">string</span> name = <span class="str">"adc_cal_seq"</span>); <span class="kw">super</span>.new(name); <span class="kw">endfunction</span>
+  <span class="kw">virtual task</span> body();
+    <span class="kw">if</span> (!cfg.has_cal_mode) <span class="kw">begin</span>              <span class="cmt">// capability, not model name</span>
+      `uvm_info(<span class="str">"CAL"</span>, <span class="str">"skipped: selected model has no cal mode"</span>, UVM_LOW)
+      <span class="kw">return</span>;
+    <span class="kw">end</span>
+    send_burst(256);
+  <span class="kw">endtask</span>
+<span class="kw">endclass</span></code></pre>
+
+  <div class="file-title">verification_ip/.../adc_driver.sv &nbsp;— the proxy edit (fragment; your generated class and field names will differ)</div>
+<pre><code><span class="ty">dpic_model_wrapper</span> dpic;
+<span class="ty">dpic_cfg</span>           cfg;
+
+<span class="kw">virtual function void</span> start_of_simulation_phase(<span class="ty">uvm_phase</span> phase);
+  <span class="kw">super</span>.start_of_simulation_phase(phase);
+  <span class="kw">if</span> (!uvm_config_db #(<span class="ty">dpic_cfg</span>)::get(<span class="kw">this</span>, <span class="str">""</span>, <span class="str">"dpic_cfg"</span>, cfg))
+    `uvm_fatal(<span class="str">"DRV"</span>, <span class="str">"dpic_cfg not found"</span>)
+  dpic = dpic_model_wrapper::type_id::create(<span class="str">"dpic"</span>);
+  dpic.init(cfg.model);                          <span class="cmt">// once per run — NOT per item, or the model's state resets</span>
+<span class="kw">endfunction</span>
+
+<span class="cmt">// ...inside the per-item handling:</span>
+<span class="kw">for</span> (<span class="kw">int</span> i = 0; i &lt; txn.num_samples; i++) burst[i] = dpic.next();
+bfm.drive_burst(burst);                          <span class="cmt">// pin-level work stays in the HDL-side BFM</span></code></pre>
+
+  <div class="file-title">project_benches/adc_bench/sim/Makefile &nbsp;— compile once, run the matrix</div>
+<pre><code>MODELS = trident triton picket
+TESTS  = test_smoke test_sweep test_cal
+<span class="cmt"># link ALL three libraries even though each run uses one (flag spelling varies by simulator)</span>
+SV_LIBS = -sv_lib ../../../dpic/lib/libtrident_adc \
+          -sv_lib ../../../dpic/lib/libtriton_adc  \
+          -sv_lib ../../../dpic/lib/libpicket_adc
+
+regress:
+	<span class="kw">for</span> t <span class="kw">in</span> $(TESTS); <span class="kw">do</span> <span class="kw">for</span> m <span class="kw">in</span> $(MODELS); <span class="kw">do</span> \
+	  $(SIM) $(SV_LIBS) +UVM_TESTNAME=$${t} +DPIC_MODEL=$${m} -l logs/$${t}_$${m}.log; \
+	<span class="kw">done</span>; <span class="kw">done</span></code></pre>
+</section>
+
+<!-- =============================== 7. PITFALLS =============================== -->
+<section>
+  <h2>7. Ways This Goes Wrong</h2>
+  <table>
+    <tr><th>Mistake</th><th>What you'll see</th><th>Fix</th></tr>
+    <tr><td><code>init()</code> called per item</td><td>ADC signal restarts from phase zero every burst</td><td>Init once in <code>start_of_simulation_phase</code>; keep one <code>chandle</code> per run</td></tr>
+    <tr><td><code>if (model == PICKET)</code> in a sequence or scoreboard</td><td>Every new model means hunting through test code</td><td>Add a capability flag to <code>dpic_cfg</code> and branch on that</td></tr>
+    <tr><td>One test class per model × scenario</td><td>3 × N files that drift apart</td><td>Scenario = test; model = <code>+DPIC_MODEL</code> or <code>default_model()</code></td></tr>
+    <tr><td>Only the selected library linked</td><td>Unresolved DPI import at elaboration for the unused models</td><td>Link all three in every run</td></tr>
+    <tr><td>Identically named C helper functions across the three libraries</td><td>Duplicate-symbol warnings, or one model calling another's helper</td><td>Unique prefix per model at build time; check the link log</td></tr>
+    <tr><td>Models with different output widths feeding the driver directly</td><td>Driver grows per-model branches</td><td>Normalize inside the wrapper or from <code>cfg.width</code></td></tr>
+    <tr><td>DPI-C call placed inside the BFM</td><td>Works in simulation, blocks later emulation</td><td>Keep the call in the driver proxy; pass samples down</td></tr>
+    <tr><td>Hand-edited generated UVMF files</td><td>Edits vanish on the next regeneration</td><td>Keep edits to the proxy small and documented; keep real logic in <code>dpic/sv/</code></td></tr>
+  </table>
+</section>
+
+<div class="footnote">Mental model: the model is the card you slot into the station, the scenario is the test program you run on it, and the only code allowed to ask "which card?" is the one small package that talks to the card's connector.</div>
+
+</div>
+</body>
+</html>
+
+</body></html>
